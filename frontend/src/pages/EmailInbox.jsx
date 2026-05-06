@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Send, AlertTriangle, Clock, User, ChevronRight, Sparkles, Shield, Eye, Plus, Loader2, X } from 'lucide-react';
+import { Mail, Send, AlertTriangle, Clock, User, ChevronRight, Sparkles, Shield, Eye, Plus, Loader2, X, Edit3, CheckCircle } from 'lucide-react';
 import { analyzeEmail } from '../services/api';
 
 /**
@@ -10,6 +10,8 @@ import { analyzeEmail } from '../services/api';
  *  Prompt Stratejisi: IUR Skorlama (Impact-Urgency-Risk)
  * ══════════════════════════════════════════════
  */
+
+import { useTasks } from '../context/TaskContext';
 
 const initialEmails = [
   {
@@ -85,6 +87,7 @@ const priorityConfig = {
 };
 
 const EmailInbox = () => {
+  const { addTask } = useTasks();
   const [emails, setEmails] = useState(initialEmails);
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -94,8 +97,49 @@ const EmailInbox = () => {
   const [analyzeError, setAnalyzeError] = useState(null);
   const [composeData, setComposeData] = useState({ sender: '', subject: '', body: '' });
 
+  // Taslak düzenleme state'leri
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [sendStatus, setSendStatus] = useState(null); // null | 'sending' | 'sent'
+
   const filteredEmails = filter === 'all' ? emails : emails.filter((e) => e.priority === filter);
   const selected = emails.find((e) => e.id === selectedEmail);
+
+  // Seçili e-posta değişince draft'ı sıfırla
+  const handleSelectEmail = (id) => {
+    setSelectedEmail(id);
+    setShowXAI(false);
+    setIsEditingDraft(false);
+    setSendStatus(null);
+    const email = emails.find(e => e.id === id);
+    if (email?.suggestedReply) {
+      setDraftText(email.suggestedReply);
+    } else {
+      setDraftText('');
+    }
+  };
+
+  // Düzenle butonuna tıklayınca
+  const handleEditDraft = () => {
+    if (selected?.suggestedReply && !draftText) {
+      setDraftText(selected.suggestedReply);
+    }
+    setIsEditingDraft(true);
+    setSendStatus(null);
+  };
+
+  // Gönder butonuna tıklayınca (simülasyon)
+  const handleSendReply = () => {
+    setSendStatus('sending');
+    setTimeout(() => {
+      setSendStatus('sent');
+      setIsEditingDraft(false);
+      // E-postayı okunmuş olarak işaretle
+      setEmails(prev => prev.map(e =>
+        e.id === selected.id ? { ...e, isRead: true, replied: true } : e
+      ));
+    }, 1500);
+  };
 
   // Canlı AI Analiz — backend'e gönder
   const handleAnalyze = async () => {
@@ -126,8 +170,24 @@ const EmailInbox = () => {
         aiAnalyzed: true,
         liveAnalysis: true,
       };
+      // Çıkarılan görevleri Task Engine'e ekle
+      if (result.suggestedTasks && result.suggestedTasks.length > 0) {
+        result.suggestedTasks.forEach(t => {
+          addTask({
+            title: t.title,
+            source: `E-Posta: ${composeData.subject || 'Konusuz'}`,
+            priority: t.priority || 'medium',
+            deadline: t.deadline || 'Belirtilmedi',
+            estimatedMinutes: t.estimatedMinutes || 30,
+            status: 'pending',
+            assignee: t.assignee || 'Yiğit',
+          });
+        });
+      }
+
       setEmails(prev => [newEmail, ...prev]);
       setSelectedEmail(newEmail.id);
+      setDraftText(newEmail.suggestedReply || '');
       setShowCompose(false);
       setComposeData({ sender: '', subject: '', body: '' });
     } catch (err) {
@@ -140,23 +200,23 @@ const EmailInbox = () => {
   return (
     <div className="flex h-full animate-slide-up">
       {/* Sol: E-Posta Listesi */}
-      <div className="w-96 flex-shrink-0 border-r border-border flex flex-col">
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between mb-3">
+      <div className="w-[420px] flex-shrink-0 border-r border-border flex flex-col">
+        <div className="p-5 border-b border-border">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-text flex items-center gap-2">
               <Mail className="w-5 h-5 text-primary" /> E-Posta Zekâsı
             </h2>
             <button
               onClick={() => setShowCompose(!showCompose)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary-light transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> Analiz Et
             </button>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             {['all', 'urgent', 'high', 'normal', 'low'].map((f) => (
               <button key={f} onClick={() => setFilter(f)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${filter === f ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === f ? 'bg-primary text-white' : 'bg-white/[0.03] text-text-secondary hover:text-text border border-border'}`}
               >{f === 'all' ? 'Tümü' : priorityConfig[f]?.label}</button>
             ))}
           </div>
@@ -192,21 +252,22 @@ const EmailInbox = () => {
           {filteredEmails.map((email) => {
             const pc = priorityConfig[email.priority];
             return (
-              <div key={email.id} onClick={() => { setSelectedEmail(email.id); setShowXAI(false); }}
-                className={`p-4 border-b border-border cursor-pointer transition-all duration-200 ${selectedEmail === email.id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-card border-l-2 border-l-transparent'} ${!email.isRead ? 'bg-surface-elevated/30' : ''}`}
+              <div key={email.id} onClick={() => handleSelectEmail(email.id)}
+                className={`px-5 py-4 border-b border-border cursor-pointer transition-all duration-200 ${selectedEmail === email.id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-card border-l-2 border-l-transparent'} ${!email.isRead ? 'bg-surface-elevated/30' : ''}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${pc.dot} ${email.priority === 'urgent' ? 'animate-pulse-soft' : ''}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`text-xs font-semibold ${!email.isRead ? 'text-text' : 'text-text-secondary'}`}>{email.sender}</span>
-                      <div className="flex items-center gap-1">
+                      <span className={`text-[13px] font-semibold ${!email.isRead ? 'text-text' : 'text-text-secondary'}`}>{email.sender}</span>
+                      <div className="flex items-center gap-1.5">
+                        {email.replied && <span className="text-[9px] px-1 py-0.5 rounded bg-success/20 text-success font-bold">YANITLANDI</span>}
                         {email.liveAnalysis && <span className="text-[9px] px-1 py-0.5 rounded bg-accent/20 text-accent font-bold">CANLI</span>}
                         <span className="text-[10px] text-text-muted">{email.time}</span>
                       </div>
                     </div>
-                    <p className={`text-sm mb-1 truncate ${!email.isRead ? 'font-semibold text-text' : 'text-text-secondary'}`}>{email.subject}</p>
-                    <div className="flex items-center gap-2">
+                    <p className={`text-sm mb-1.5 truncate ${!email.isRead ? 'font-semibold text-text' : 'text-text-secondary'}`}>{email.subject}</p>
+                    <div className="flex items-center gap-2.5">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${pc.class}`}>{pc.label}</span>
                       <span className="text-[10px] text-text-muted">Skor: {email.scores.total.toFixed(1)}</span>
                       {(email.risks?.phishing > 5 || email.risks?.phishing_score > 5) && (
@@ -225,21 +286,22 @@ const EmailInbox = () => {
       <div className="flex-1 flex flex-col">
         {selected ? (
           <>
-            <div className="p-5 border-b border-border">
+            <div className="p-6 border-b border-border">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-text">{selected.subject}</h3>
-                  <div className="flex items-center gap-3 mt-2 text-sm text-text-secondary">
-                    <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{selected.sender}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{selected.time}</span>
+                  <h3 className="text-lg font-bold text-text leading-snug">{selected.subject}</h3>
+                  <div className="flex items-center gap-4 mt-3 text-sm text-text-secondary">
+                    <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{selected.sender}</span>
+                    <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{selected.time}</span>
                     {selected.liveAnalysis && <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent text-[10px] font-bold">🔴 CANLI AI ANALİZ</span>}
+                    {selected.replied && <span className="px-2 py-0.5 rounded-full bg-success/20 text-success text-[10px] font-bold">✓ YANITLANDI</span>}
                   </div>
                 </div>
                 <span className={`px-3 py-1 rounded-lg text-xs font-bold border ${priorityConfig[selected.priority].class}`}>{priorityConfig[selected.priority].label}</span>
               </div>
             </div>
 
-            <div className="px-5 py-3 bg-surface-elevated/30 border-b border-border">
+            <div className="px-6 py-4 bg-surface-elevated/30 border-b border-border">
               <div className="flex items-center gap-6">
                 {[
                   { label: 'Impact', value: selected.scores.impact, color: 'bg-primary' },
@@ -261,11 +323,13 @@ const EmailInbox = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* E-posta İçeriği */}
               <div className="bg-card border border-border rounded-xl p-4">
                 <p className="text-sm text-text-secondary leading-relaxed">{selected.preview}</p>
               </div>
 
+              {/* Phishing Uyarısı */}
               {(selected.risks?.phishing > 5 || selected.risks?.phishing_score > 5) && (
                 <div className="p-4 rounded-xl bg-danger/10 border border-danger/20">
                   <div className="flex items-center gap-2 mb-2">
@@ -276,7 +340,8 @@ const EmailInbox = () => {
                 </div>
               )}
 
-              <button onClick={() => setShowXAI(!showXAI)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm text-accent hover:text-white transition-colors w-full">
+              {/* XAI Açıklama */}
+              <button onClick={() => setShowXAI(!showXAI)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass-card text-sm text-accent hover:text-white transition-colors w-full">
                 <Eye className="w-4 h-4" />
                 <span className="font-medium">Bu karar neden verildi? (XAI Açıklama)</span>
                 <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${showXAI ? 'rotate-90' : ''}`} />
@@ -292,17 +357,101 @@ const EmailInbox = () => {
                 </div>
               )}
 
+              {/* AI Yanıt Taslağı — Düzenlenebilir */}
               {selected.suggestedReply && (
-                <div className="p-4 rounded-xl bg-card border border-border">
-                  <div className="flex items-center gap-2 mb-3">
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {/* Başlık */}
+                  <div className="flex items-center gap-2 px-4 py-3 bg-primary/[0.06] border-b border-border">
                     <Send className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-semibold text-text">AI Cevap Taslağı</span>
+                    <span className="text-sm font-semibold text-text flex-1">AI Yanıt Taslağı</span>
+                    <span className="text-[10px] text-text-muted font-data">Kime: {selected.email}</span>
                   </div>
-                  <div className="p-3 rounded-lg bg-surface-elevated text-sm text-text-secondary whitespace-pre-line leading-relaxed">{selected.suggestedReply}</div>
-                  <div className="flex gap-2 mt-3">
-                    <button className="px-4 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors">Gönder</button>
-                    <button className="px-4 py-2 rounded-lg bg-surface-elevated text-text-secondary text-xs font-semibold hover:text-text transition-colors">Düzenle</button>
-                  </div>
+
+                  {/* Gönderildi Bildirimi */}
+                  {sendStatus === 'sent' ? (
+                    <div className="p-6 text-center animate-slide-up">
+                      <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-3">
+                        <CheckCircle className="w-6 h-6 text-success" />
+                      </div>
+                      <p className="text-sm font-semibold text-success">Yanıt Başarıyla Gönderildi!</p>
+                      <p className="text-xs text-text-muted mt-1">E-posta {selected.email} adresine iletildi.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Taslak İçeriği */}
+                      <div className="p-4">
+                        {isEditingDraft ? (
+                          <textarea
+                            value={draftText}
+                            onChange={(e) => setDraftText(e.target.value)}
+                            rows={6}
+                            className="w-full px-3 py-3 bg-surface-elevated border border-primary/30 rounded-lg text-sm text-text leading-relaxed focus:outline-none focus:border-primary resize-none"
+                            placeholder="Yanıtınızı yazın..."
+                            autoFocus
+                          />
+                        ) : (
+                          <div
+                            className="p-3 rounded-lg bg-surface-elevated/50 text-sm text-text-secondary whitespace-pre-line leading-relaxed cursor-pointer hover:bg-surface-elevated transition-colors"
+                            onClick={handleEditDraft}
+                            title="Düzenlemek için tıklayın"
+                          >
+                            {draftText || selected.suggestedReply}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Aksiyon Butonları */}
+                      <div className="flex items-center gap-2 px-4 py-3 border-t border-border bg-white/[0.01]">
+                        {isEditingDraft ? (
+                          <>
+                            <button
+                              onClick={handleSendReply}
+                              disabled={!draftText.trim() || sendStatus === 'sending'}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors disabled:opacity-40"
+                            >
+                              {sendStatus === 'sending' ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Gönderiliyor...</>
+                              ) : (
+                                <><Send className="w-3.5 h-3.5" /> Gönder</>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => { setIsEditingDraft(false); }}
+                              className="px-4 py-2 rounded-lg bg-surface-elevated text-text-secondary text-xs font-semibold hover:text-text transition-colors"
+                            >
+                              İptal
+                            </button>
+                            <button
+                              onClick={() => { setDraftText(selected.suggestedReply); }}
+                              className="px-3 py-2 rounded-lg text-text-muted text-xs hover:text-accent transition-colors ml-auto"
+                            >
+                              ↻ AI Taslağına Sıfırla
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={handleSendReply}
+                              disabled={sendStatus === 'sending'}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors disabled:opacity-40"
+                            >
+                              {sendStatus === 'sending' ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Gönderiliyor...</>
+                              ) : (
+                                <><Send className="w-3.5 h-3.5" /> Taslağı Gönder</>
+                              )}
+                            </button>
+                            <button
+                              onClick={handleEditDraft}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-elevated text-text-secondary text-xs font-semibold hover:text-text transition-colors"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Düzenle
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
