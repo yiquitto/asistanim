@@ -81,7 +81,6 @@ const RiskPanel = () => {
             Risk & Uyum Paneli
           </h2>
           <p className="text-sm text-text-secondary mt-0.5">
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-bold mr-2">MOCK</span>
             KVKK · Phishing · Sosyal Mühendislik · Veri Sızıntısı
           </p>
         </div>

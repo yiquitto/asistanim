@@ -13,7 +13,7 @@ const initialTasks = [
     deadline: 'Bugün 17:00',
     estimatedMinutes: 120,
     status: 'in-progress',
-    assignee: 'Yiğit',
+    assignee: 'Siz',
   },
   {
     id: 2,
@@ -23,7 +23,7 @@ const initialTasks = [
     deadline: 'Bugün 13:00',
     estimatedMinutes: 30,
     status: 'pending',
-    assignee: 'Yiğit',
+    assignee: 'Siz',
   },
   {
     id: 3,
@@ -33,7 +33,7 @@ const initialTasks = [
     deadline: 'Bugün 14:00',
     estimatedMinutes: 45,
     status: 'pending',
-    assignee: 'Ümmühan',
+    assignee: 'Siz',
   },
   {
     id: 4,
@@ -43,7 +43,7 @@ const initialTasks = [
     deadline: 'Cuma',
     estimatedMinutes: 60,
     status: 'pending',
-    assignee: 'Ömer',
+    assignee: 'Siz',
   },
   {
     id: 5,
@@ -53,7 +53,7 @@ const initialTasks = [
     deadline: 'Çarşamba',
     estimatedMinutes: 30,
     status: 'completed',
-    assignee: 'Ümmühan',
+    assignee: 'Siz',
   },
   {
     id: 6,
@@ -63,7 +63,7 @@ const initialTasks = [
     deadline: '20 Mayıs',
     estimatedMinutes: 10,
     status: 'pending',
-    assignee: 'Yiğit',
+    assignee: 'Siz',
   },
   {
     id: 7,
@@ -73,7 +73,7 @@ const initialTasks = [
     deadline: 'Bu hafta',
     estimatedMinutes: 5,
     status: 'completed',
-    assignee: 'Ömer',
+    assignee: 'Siz',
   },
   {
     id: 8,
@@ -83,7 +83,7 @@ const initialTasks = [
     deadline: 'Bugün',
     estimatedMinutes: 15,
     status: 'pending',
-    assignee: 'Yiğit',
+    assignee: 'Siz',
   },
 ];
 

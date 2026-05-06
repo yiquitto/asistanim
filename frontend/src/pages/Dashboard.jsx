@@ -83,10 +83,13 @@ const NetworkGraph = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       setPoints(prev => {
-        const next = [...prev.slice(1), Math.random() * 60 + 10];
-        return next;
+        const lastPoint = prev[prev.length - 1];
+        // Random walk: previous point +/- 15, capped between 10 and 80
+        const variation = (Math.random() * 30) - 15;
+        const nextValue = Math.max(10, Math.min(80, lastPoint + variation));
+        return [...prev.slice(1), nextValue];
       });
-    }, 800);
+    }, 1500);
     return () => clearInterval(interval);
   }, []);
 
@@ -95,8 +98,9 @@ const NetworkGraph = () => {
     const h = 60;
     return points.map((v, i) => {
       const x = (i / (points.length - 1)) * w;
+      // Use bezier curves or just simple lines for SVG path
       const y = h - (v / 80) * h;
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
   }, [points]);
 
@@ -237,7 +241,7 @@ const Dashboard = () => {
         <div className="flex items-center gap-3 flex-1 justify-end">
           {/* Arama Çubuğu */}
           <div className={`relative flex items-center flex-1 max-w-md transition-all duration-300 ${searchFocused ? 'max-w-lg' : ''}`}>
-            <Search className={`absolute left-3.5 w-4 h-4 transition-colors duration-200 ${searchFocused ? 'text-primary' : 'text-text-muted'}`} />
+            <Search className={`absolute left-5 w-4 h-4 transition-colors duration-200 ${searchFocused ? 'text-primary' : 'text-text-muted'}`} />
             <input
               type="text"
               value={searchQuery}
@@ -245,7 +249,7 @@ const Dashboard = () => {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
               placeholder="E-posta, görev veya kişi ara..."
-              className={`w-full pl-10 pr-16 py-2.5 rounded-xl text-sm text-text placeholder-text-muted bg-white/[0.03] border transition-all duration-300 focus:outline-none ${
+              className={`w-full pl-14 pr-16 py-2.5 rounded-xl text-sm text-text placeholder-text-muted bg-white/[0.03] border transition-all duration-300 focus:outline-none ${
                 searchFocused
                   ? 'border-primary/40 bg-white/[0.05] shadow-[0_0_20px_rgba(59,130,246,0.08)]'
                   : 'border-border hover:border-border-light'

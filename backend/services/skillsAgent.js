@@ -14,6 +14,17 @@ const IMPACT_KEYWORDS = ['ceo', 'genel müdür', 'yönetim kurulu', 'bütçe', '
 const RISK_KEYWORDS = ['kvkk', 'gdpr', 'gizli', 'confidential', 'şifreli', 'phishing', 'dolandırıcı'];
 const TASK_KEYWORDS = ['lütfen yapınız', 'tamamlayınız', 'gönderiniz', 'hazırlayınız', 'raporlayınız'];
 
+// JSON Markdown temizleyici
+const parseAIResponse = (text) => {
+  try {
+    const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanText);
+  } catch (err) {
+    console.error('[Skills Agent] JSON Parse Hatası. Ham metin:', text);
+    throw new Error('Geçersiz JSON formatı döndü.');
+  }
+};
+
 /**
  * Ana analiz fonksiyonu — e-posta içeriğini analiz eder
  * @param {Object} emailData - { sender, subject, body, date }
@@ -80,7 +91,6 @@ const callGroqAPI = async (sender, subject, body, date) => {
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
-      response_format: { type: 'json_object' },
     }),
   });
 
@@ -94,7 +104,7 @@ const callGroqAPI = async (sender, subject, body, date) => {
   if (!text) throw new Error('Groq boş yanıt döndü');
 
   console.log('[Skills Agent] ✅ Groq AI analiz başarılı');
-  return JSON.parse(text);
+  return parseAIResponse(text);
 };
 
 /**
@@ -133,7 +143,7 @@ const callGeminiAPI = async (sender, subject, body, date, retries = 3) => {
     if (!text) throw new Error('Gemini boş yanıt döndü');
 
     console.log('[Skills Agent] ✅ Gemini AI analiz başarılı');
-    return JSON.parse(text);
+    return parseAIResponse(text);
   }
 
   throw new Error('Gemini API: Tüm denemeler başarısız');
@@ -162,7 +172,7 @@ const callOpenAIAPI = async (sender, subject, body, date) => {
   if (!response.ok) throw new Error(`OpenAI API: ${response.status}`);
 
   const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  return parseAIResponse(data.choices[0].message.content);
 };
 
 /**
@@ -177,15 +187,16 @@ ANALIZ KRITERLERİ:
 3. Risk (1-10): Güvenlik/uyum riski
 
 TOPLAM SKOR FORMÜLÜ: (Impact × 0.4) + (Urgency × 0.35) + (Risk × 0.25)
+Lütfen JSON içindeki "total" kısmına sadece çıkan SAYIYI yazın (örn: 7.2). Kesinlikle matematiksel formül veya işlem yazmayın!
 
 Öncelik eşikleri: 8.0-10.0=urgent, 6.0-7.9=high, 4.0-5.9=normal, 0.0-3.9=low
 
-ÖNEMLİ KURAL: Yalnızca ve yalnızca geçerli bir JSON objesi döndür. Markdown backtick'leri (\`\`\`) veya fazladan hiçbir açıklama ekleme. Sadece JSON formatında çıktı ver. String içindeki tırnak işaretlerinden kaçın (escape et).
+ÖNEMLİ KURAL: Yalnızca ve yalnızca geçerli bir JSON objesi döndür. Sadece JSON formatında çıktı ver.
 
 JSON ÇIKTI:
 {
   "priority": "urgent|high|normal|low",
-  "scores": { "impact": <1-10>, "urgency": <1-10>, "risk": <1-10>, "total": <hesapla> },
+  "scores": { "impact": <1-10>, "urgency": <1-10>, "risk": <1-10>, "total": <SADECE SAYI> },
   "category": "task|meeting|info|risk|complaint|approval",
   "summary": "<1-2 cümle Türkçe özet>",
   "explanation": "<Türkçe XAI açıklama — bu skor neden verildi?>",
