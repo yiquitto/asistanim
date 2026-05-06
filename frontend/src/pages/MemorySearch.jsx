@@ -64,20 +64,19 @@ const MemorySearch = () => {
   };
 
   return (
-    <div className="p-6 space-y-5 animate-slide-up">
-      <div>
+    <div className="p-6 h-[calc(100vh-4rem)] flex flex-col animate-slide-up">
+      <div className="flex-shrink-0">
         <h2 className="text-xl font-bold text-text flex items-center gap-2">
           <Brain className="w-5 h-5 text-secondary" />
           Kurumsal Hafıza
         </h2>
-        <p className="text-sm text-text-secondary mt-0.5">
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-bold mr-2">MOCK</span>
+        <p className="text-sm text-text-secondary mt-1 flex items-center gap-2">
           Tüm e-posta, toplantı ve dokümanlardan bağlamsal arama
         </p>
       </div>
 
       {/* Arama Kutusu */}
-      <div className="relative">
+      <div className="relative mt-6 flex-shrink-0">
         <div className="flex gap-2">
           <div className="flex-1 relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
@@ -92,14 +91,14 @@ const MemorySearch = () => {
           </div>
           <button
             onClick={handleSearch}
-            className="px-6 py-3.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+            className="px-6 py-3.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity flex-shrink-0"
           >
             Ara
           </button>
         </div>
 
         {/* Önerilen Aramalar */}
-        <div className="flex gap-2 mt-2">
+        <div className="flex flex-wrap gap-2 mt-4">
           {['SLA çözüm geçmişi', 'bütçe kararları', 'KVKK politikası'].map((s) => (
             <button
               key={s}
@@ -112,8 +111,9 @@ const MemorySearch = () => {
         </div>
       </div>
 
-      {/* Arama Sonuçları */}
-      {isSearching && (
+      {/* Arama Sonuçları Container */}
+      <div className="flex-1 overflow-y-auto mt-6 pb-6 pr-2">
+        {isSearching && (
         <div className="flex items-center justify-center py-12">
           <div className="flex items-center gap-3 text-sm text-text-secondary">
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -159,14 +159,19 @@ const MemorySearch = () => {
       )}
 
       {!isSearching && results.length === 0 && query === '' && (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center">
-            <Brain className="w-16 h-16 text-text-muted mx-auto mb-4 opacity-20" />
-            <p className="text-sm text-text-muted mb-1">Kurumsal hafızada arama yapın</p>
-            <p className="text-xs text-text-muted">Tüm e-posta, toplantı ve doküman arşivi AI ile taranır</p>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center -mt-12">
+            <div className="w-20 h-20 rounded-full bg-surface-elevated/50 flex items-center justify-center mx-auto mb-5 border border-border">
+              <Brain className="w-10 h-10 text-primary opacity-50" />
+            </div>
+            <p className="text-sm font-semibold text-text mb-1.5">Kurumsal hafızada arama yapın</p>
+            <p className="text-xs text-text-secondary max-w-[250px] mx-auto leading-relaxed">
+              Geçmiş toplantı kararları, proje detayları ve teknik çözümler saniyeler içinde elinizde.
+            </p>
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
