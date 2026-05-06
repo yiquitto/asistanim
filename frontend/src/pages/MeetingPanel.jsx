@@ -59,6 +59,38 @@ const meetings = [
     ],
     efficiency: 62,
   },
+  {
+    id: 4,
+    title: 'Müşteri Başarı Ekibi Retrospektifi',
+    date: '4 Mayıs 2026 · 15:30 – 16:15',
+    participants: ['Selin Yıldız', 'Burak Şen', 'Deniz Tekin'],
+    summary: 'Nisan ayında müşteri memnuniyeti %88\'e yükseldi. Churn oranı %2.1 olarak gerçekleşti. Öncelikli şikayet konusu entegrasyon süreçlerinin yavaşlığı olarak belirlendi.',
+    decisions: [
+      'Entegrasyon süreçleri için self-service portal geliştirilecek',
+      'Churn riski yüksek hesaplara özel destek atanılacak',
+    ],
+    actions: [
+      { task: 'Self-service portal wireframe hazırla', assignee: 'Selin Yıldız', deadline: '11 Mayıs' },
+      { task: 'Risk skoru yüksek 10 hesabı listele', assignee: 'Deniz Tekin', deadline: '8 Mayıs' },
+    ],
+    efficiency: 74,
+  },
+  {
+    id: 5,
+    title: 'İK Politikaları Gözden Geçirme',
+    date: '3 Mayıs 2026 · 11:00 – 12:00',
+    participants: ['Ayşe Koç', 'Murat Öz', 'Zeynep Aydın'],
+    summary: 'Hibrit çalışma modeli kalıcı hale getirildi. Hafta 3 gün ofis, 2 gün uzaktan çalışma standardı belirlendi. Yıllık izin politikasında güncelleme yapılacak.',
+    decisions: [
+      'Hibrit model: 3 ofis / 2 uzaktan',
+      'Yıllık izin hakkı 22 güne çıkarılacak',
+    ],
+    actions: [
+      { task: 'İK politika dokümanını güncelle', assignee: 'Ayşe Koç', deadline: '10 Mayıs' },
+      { task: 'Çalışan memnuniyet anketi hazırla', assignee: 'Zeynep Aydın', deadline: '13 Mayıs' },
+    ],
+    efficiency: 81,
+  },
 ];
 
 const MeetingPanel = () => {
@@ -133,8 +165,7 @@ const MeetingPanel = () => {
             <Users className="w-5 h-5 text-secondary" />
             Toplantı Zekâsı
           </h2>
-          <p className="text-sm text-text-secondary mt-0.5">
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-bold mr-2">MOCK</span>
+          <p className="text-sm text-text-secondary mt-1">
             Toplantı kayıtlarından otomatik özet ve aksiyon çıkarımı
           </p>
         </div>
@@ -147,14 +178,12 @@ const MeetingPanel = () => {
         )}
         
         {!isUploading ? (
-          <div className="space-y-4">
-            <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300">
-              <UploadCloud className="w-7 h-7" />
+          <div className="flex flex-col items-center justify-center py-6">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300 mb-4">
+              <UploadCloud className="w-8 h-8" />
             </div>
-            <div>
-              <p className="text-text font-semibold text-lg">Toplantı Ses Kaydını Yükle</p>
-              <p className="text-sm text-text-muted mt-1">Sürükleyip bırakın veya tıklayarak seçin (MP3, WAV)</p>
-            </div>
+            <p className="text-text font-semibold text-lg">Toplantı Ses Kaydını Yükle</p>
+            <p className="text-sm text-text-muted mt-1.5">Sürükleyip bırakın veya tıklayarak seçin (MP3, WAV)</p>
           </div>
         ) : (
           <div className="space-y-4 py-2">

@@ -10,7 +10,6 @@ import {
   Zap,
 } from 'lucide-react';
 
-// Sidebar navigasyon öğeleri
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', badge: null },
   { to: '/email', icon: Mail, label: 'E-Posta Zekâsı', badge: '12' },
@@ -22,60 +21,79 @@ const navItems = [
 
 const Layout = () => {
   return (
-    <div className="flex h-screen overflow-hidden bg-surface">
+    <div className="flex h-screen overflow-hidden bg-surface relative">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-surface-elevated border-r border-border flex flex-col">
+      <aside className="w-[260px] flex-shrink-0 glass-panel flex flex-col relative z-20"
+        style={{ borderRight: '0.5px solid rgba(255,255,255,0.06)' }}>
+        
         {/* Logo */}
-        <div className="p-5 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-              <Brain className="w-5 h-5 text-white" />
+        <div className="px-5 py-5 border-b border-border/50 relative">
+          <div className="absolute -top-8 -left-8 w-32 h-32 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center animate-glow shadow-lg shadow-primary/25">
+              <Brain className="w-4.5 h-4.5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-text tracking-tight">Asistanim</h1>
-              <p className="text-[11px] text-text-muted font-medium">AI İş Akış Sistemi</p>
+              <h1 className="text-lg font-bold text-text tracking-tight leading-tight">Asistanım</h1>
+              <p className="text-[9px] text-primary-light font-semibold uppercase tracking-[0.15em]">Enterprise AI</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto relative z-10">
+          <p className="px-3 text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Modüller</p>
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
+                `flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
                   isActive
-                    ? 'bg-primary/15 text-primary border border-primary/20'
-                    : 'text-text-secondary hover:text-text hover:bg-card'
+                    ? 'bg-primary/15 text-white border border-primary/25 shadow-[0_0_12px_rgba(59,130,246,0.08)]'
+                    : 'text-text-secondary bg-white/[0.02] border border-transparent hover:text-white hover:bg-white/[0.05] hover:border-border-light'
                 }`
               }
             >
-              <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
-              <span className="flex-1">{item.label}</span>
-              {item.badge && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-danger/20 text-danger">
-                  {item.badge}
-                </span>
+              {({ isActive }) => (
+                <>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${
+                    isActive ? 'bg-primary/20' : 'bg-white/[0.04] group-hover:bg-white/[0.06]'
+                  }`}>
+                    <item.icon className={`w-4 h-4 ${isActive ? 'text-primary-light' : 'text-text-muted group-hover:text-text-secondary'}`} />
+                  </div>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {item.badge && (
+                    <span className={`font-data text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                      isActive ? 'bg-primary/25 text-primary-light' : 'bg-white/[0.05] text-text-muted'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-border">
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <Zap className="w-3.5 h-3.5 text-accent" />
-            <span>Skills Agent Aktif</span>
-            <span className="ml-auto w-2 h-2 rounded-full bg-success animate-pulse-soft" />
+        {/* Agent Status */}
+        <div className="px-3 py-4 border-t border-border/50 relative z-10">
+          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-accent/[0.06] border border-accent/15">
+            <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-accent" />
+            </div>
+            <div className="flex-1">
+              <span className="text-[11px] font-semibold text-accent tracking-wide block leading-tight">Skills Agent</span>
+              <span className="text-[9px] text-text-muted">Aktif · Bağlı</span>
+            </div>
+            <span className="w-2 h-2 rounded-full bg-accent animate-pulse-soft shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto relative z-10">
         <Outlet />
       </main>
     </div>
