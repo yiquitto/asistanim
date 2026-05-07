@@ -1,399 +1,294 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Mail, CheckSquare, Users, ShieldAlert,
-  TrendingUp, TrendingDown, Clock, AlertTriangle,
-  ArrowRight, Zap, Brain, Activity, DollarSign, Search
+  Clock, ArrowRight, Brain, Activity, Shield,
+  Cpu, Eye, Zap, Terminal, ChevronDown, ChevronUp, Info
 } from 'lucide-react';
 import { checkHealth } from '../services/api';
+import { useTasks } from '../context/TaskContext';
+import { useEmails } from '../context/EmailContext';
+import { useLogs } from '../context/LogContext';
 
 /**
  * ══════════════════════════════════════════════
- *  Asistanim — Kişisel AI Çalışma Alanı
- *  Skills Agent tarafından optimize edilmiştir.
+ *  Asistanim — Dashboard v4 (Enterprise Grade)
+ *  Clean grid · Sharp edges · Professional density
  * ══════════════════════════════════════════════
  */
 
-/* ── Sparkline SVG ── */
-const Sparkline = ({ data, color = '#3b82f6', height = 32, width = 80 }) => {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * (height - 4) - 2;
-    return `${x},${y}`;
-  }).join(' ');
+/* ── PII Maskeleme Demo ── */
+const PII_DEMOS = [
+  { label: 'TC Kimlik No', input: 'TC: 12345678901', output: 'TC: [TC_MASKED]', tag: 'text-danger' },
+  { label: 'Telefon',      input: 'Tel: 0532 123 45 67', output: 'Tel: [PHONE_MASKED]', tag: 'text-warning' },
+  { label: 'IBAN',         input: 'IBAN: TR33 0006 1005 1978 6457 8413 26', output: 'IBAN: [IBAN_MASKED]', tag: 'text-primary' },
+  { label: 'E-posta',      input: 'info@sirket.com', output: '[EMAIL_MASKED]', tag: 'text-accent' },
+  { label: 'Kredi Kartı',  input: 'Kart: 4532 **** **** 9012', output: 'Kart: [CC_MASKED]', tag: 'text-secondary' },
+];
 
-  return (
-    <svg width={width} height={height} className="opacity-40">
-      <defs>
-        <linearGradient id={`sg-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polyline fill="none" stroke={color} strokeWidth="1.5" points={points} />
-      <polygon
-        fill={`url(#sg-${color.replace('#','')})`}
-        points={`0,${height} ${points} ${width},${height}`}
-      />
-    </svg>
-  );
-};
-
-/* ── Ring Progress ── */
-const RingProgress = ({ value, max = 100, size = 56, stroke = 4, color = 'text-primary', label, sublabel }) => {
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = ((max - Math.min(value, max)) / max) * circumference;
-
-  return (
-    <div className="flex items-center gap-3">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="transform -rotate-90">
-          <circle cx={size/2} cy={size/2} r={radius} fill="none" strokeWidth={stroke} className="ring-track" />
-          <circle
-            cx={size/2} cy={size/2} r={radius} fill="none" strokeWidth={stroke}
-            className={`ring-progress ${color}`}
-            stroke="currentColor"
-            strokeDasharray={circumference}
-            strokeDashoffset={progress}
-            strokeLinecap="round"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-data text-xs font-bold text-text">{value}</span>
-        </div>
-      </div>
-      <div>
-        <p className="text-xs text-text-secondary leading-tight">{label}</p>
-        {sublabel && <p className="text-[10px] text-text-muted mt-0.5">{sublabel}</p>}
-      </div>
-    </div>
-  );
-};
-
-/* ── Simulated Network Activity ── */
-const NetworkGraph = () => {
-  const [points, setPoints] = useState(() =>
-    Array.from({ length: 40 }, () => Math.random() * 60 + 10)
-  );
+const PIIDemo = () => {
+  const [idx, setIdx] = useState(0);
+  const [phase, setPhase] = useState('input'); // input → masking → output
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPoints(prev => {
-        const lastPoint = prev[prev.length - 1];
-        // Random walk: previous point +/- 15, capped between 10 and 80
-        const variation = (Math.random() * 30) - 15;
-        const nextValue = Math.max(10, Math.min(80, lastPoint + variation));
-        return [...prev.slice(1), nextValue];
-      });
-    }, 1500);
-    return () => clearInterval(interval);
+    const cycle = setInterval(() => {
+      setPhase('input');
+      setTimeout(() => setPhase('masking'), 1200);
+      setTimeout(() => setPhase('output'), 2200);
+      setTimeout(() => {
+        setIdx(p => (p + 1) % PII_DEMOS.length);
+        setPhase('input');
+      }, 4000);
+    }, 4500);
+    return () => clearInterval(cycle);
   }, []);
 
-  const pathData = useMemo(() => {
-    const w = 100;
-    const h = 60;
-    return points.map((v, i) => {
-      const x = (i / (points.length - 1)) * w;
-      // Use bezier curves or just simple lines for SVG path
-      const y = h - (v / 80) * h;
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(' ');
-  }, [points]);
-
-  const areaPath = useMemo(() => {
-    return pathData + ` L 100 60 L 0 60 Z`;
-  }, [pathData]);
-
+  const d = PII_DEMOS[idx];
   return (
-    <div className="glass-card rounded-xl p-4 relative overflow-hidden scanline-overlay">
-      <div className="flex items-center justify-between mb-3">
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-medium text-text-secondary">Ağ Aktivitesi — Canlı</span>
+          <Shield className="w-4 h-4 text-accent" />
+          <span className="text-xs font-bold text-text uppercase tracking-wide">PII Koruma Motoru</span>
         </div>
-        <span className="font-data text-[10px] text-accent animate-pulse-soft">● LIVE</span>
+        <button onClick={() => setShowInfo(!showInfo)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/5 text-text-muted hover:text-accent transition-colors">
+          <Info className="w-3 h-3" />
+        </button>
       </div>
-      <svg viewBox="0 0 100 60" className="w-full h-24" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={areaPath} fill="url(#netGrad)" />
-        <path d={pathData} fill="none" stroke="#3b82f6" strokeWidth="0.6" opacity="0.8" />
-      </svg>
-      <div className="flex justify-between mt-2 text-[10px] text-text-muted font-data">
-        <span>E-posta Akışı</span>
-        <span>AI Filtreleme</span>
-        <span>{Math.round(points[points.length - 1])} req/dk</span>
+
+      {showInfo && (
+        <div className="mb-3 p-3 rounded bg-accent/[0.06] border border-accent/20 text-[11px] text-text-secondary leading-relaxed animate-slide-up">
+          <p className="font-bold text-accent mb-1">Nasıl çalışır?</p>
+          AI API'ye gönderilmeden <strong>ÖNCE</strong> tüm kişisel veriler regex ile maskelenir. KVKK uyumlu.
+        </div>
+      )}
+
+      {/* Terminal */}
+      <div className="flex-1 bg-[#080c14] rounded border border-white/[0.04] p-3.5 font-mono text-xs space-y-2 min-h-[64px]">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-text-muted uppercase w-10 shrink-0">giriş</span>
+          <span className={`transition-all duration-300 ${phase === 'output' ? 'text-text-muted/30 line-through' : 'text-text-secondary'}`}>{d.input}</span>
+        </div>
+        {phase === 'masking' && (
+          <div className="flex items-center gap-2 text-warning animate-pulse">
+            <span className="w-10 shrink-0" />
+            <Activity className="w-3 h-3" />
+            <span className="text-[10px]">Regex motoru çalışıyor...</span>
+          </div>
+        )}
+        {phase === 'output' && (
+          <div className="flex items-center gap-2 animate-slide-up">
+            <span className="text-[9px] text-text-muted uppercase w-10 shrink-0">çıkış</span>
+            <span className={`font-bold ${d.tag}`}>{d.output}</span>
+            <span className="text-accent text-[10px] ml-1">✓</span>
+          </div>
+        )}
+      </div>
+
+      {/* Tags */}
+      <div className="flex gap-1 mt-3">
+        {PII_DEMOS.map((p, i) => (
+          <span key={i} className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition-colors ${i === idx ? 'bg-accent/20 text-accent' : 'bg-white/[0.03] text-text-muted'}`}>
+            {p.label}
+          </span>
+        ))}
       </div>
     </div>
   );
 };
 
-/* ── Data ── */
-const metrics = [
-  {
-    label: 'Gelen Kutusu', value: 12, change: -68,
-    icon: Mail, color: 'text-primary', bg: 'bg-primary/10', link: '/email',
-    sparkData: [45, 38, 32, 28, 22, 18, 14, 12],
-    sparkColor: '#3b82f6',
-  },
-  {
-    label: 'Görevlerim', value: 8, change: -42,
-    icon: CheckSquare, color: 'text-accent', bg: 'bg-accent/10', link: '/tasks',
-    sparkData: [20, 18, 15, 12, 10, 9, 8, 8],
-    sparkColor: '#10b981',
-  },
-  {
-    label: 'Bugünkü Toplantılar', value: 3, change: 0,
-    icon: Users, color: 'text-secondary', bg: 'bg-secondary/10', link: '/meetings',
-    sparkData: [2, 3, 1, 4, 2, 3, 3, 3],
-    sparkColor: '#0ea5e9',
-  },
-  {
-    label: 'Risk Uyarıları', value: 2, change: -1,
-    icon: ShieldAlert, color: 'text-neon-red', bg: 'bg-neon-red/10', link: '/risks',
-    sparkData: [5, 4, 6, 3, 4, 3, 2, 2],
-    sparkColor: '#ff3b5c',
-  },
+/* ── Sistem Mimarisi Kartları ── */
+const ARCH = [
+  { icon: Cpu,    title: 'IUR Skorlama',   color: 'text-primary',   detail: 'Impact × 0.4 + Urgency × 0.35 + Risk × 0.25\nACİL: 8-10 · YÜKSEK: 6-8 · NORMAL: 4-6' },
+  { icon: Shield, title: 'PII Maskeleme',   color: 'text-accent',    detail: 'TC · Telefon · IBAN · E-posta · Kredi Kartı\nAI\'ya gönderilmeden önce maskelenir. KVKK uyumlu.' },
+  { icon: Eye,    title: 'XAI Katmanı',     color: 'text-warning',   detail: 'Her AI kararı için "Neden?" açıklaması üretilir.\nŞeffaf, denetlenebilir ve açıklanabilir AI.' },
+  { icon: Zap,    title: 'Multi-AI Motor',  color: 'text-secondary', detail: 'Groq (~1s) → Gemini (~3s) → OpenAI (~4s)\nOtomatik failover. Her zaman çalışır.' },
 ];
 
-const recentActivities = [
-  { id: 1, type: 'security', tag: 'GÜVENLİK', text: "Şüpheli phishing e-postası tespit edildi ve karantinaya alındı", time: '13:45:02', priority: 'urgent' },
-  { id: 2, type: 'mail', tag: 'E-POSTA', text: "CEO'dan gelen bütçe revizyonu e-postası ACİL olarak önceliklendirildi", time: '13:43:18', priority: 'urgent' },
-  { id: 3, type: 'task', tag: 'GÖREV', text: 'Q3 raporlama görevi otomatik oluşturuldu ve Elif Kara\'ya atandı', time: '13:38:44', priority: 'high' },
-  { id: 4, type: 'meeting', tag: 'TOPLANTI', text: 'Pazarlama toplantısı özeti çıkarıldı → 4 aksiyon maddesi oluşturuldu', time: '12:15:30', priority: 'normal' },
-  { id: 5, type: 'mail', tag: 'E-POSTA', text: 'Müşteri şikayetine otomatik yanıt taslağı hazırlandı ve onaya sunuldu', time: '11:52:07', priority: 'high' },
-  { id: 6, type: 'security', tag: 'GÜVENLİK', text: 'KVKK uyumlu olmayan veri paylaşımı algılandı, bildirim gönderildi', time: '11:30:22', priority: 'urgent' },
-];
-
-const tagStyles = {
-  security: 'tag-security',
-  task: 'tag-task',
-  mail: 'tag-mail',
-  meeting: 'tag-meeting',
+const ArchCard = ({ card }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <button onClick={() => setOpen(!open)} className={`w-full text-left p-3 rounded border transition-all duration-150 ${open ? 'bg-white/[0.03] border-white/10' : 'bg-transparent border-transparent hover:bg-white/[0.02] hover:border-white/[0.06]'}`}>
+      <div className="flex items-center gap-2">
+        <card.icon className={`w-3.5 h-3.5 ${card.color}`} />
+        <span className="text-[11px] font-semibold text-text flex-1">{card.title}</span>
+        <ChevronDown className={`w-3 h-3 text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </div>
+      {open && (
+        <p className="mt-2 text-[10px] text-text-muted whitespace-pre-line leading-relaxed pl-5.5 animate-slide-up">{card.detail}</p>
+      )}
+    </button>
+  );
 };
 
-const efficiencyStats = [
-  { label: 'E-Posta Yükü Azalması', value: 72, target: 70, unit: '%', color: 'text-primary' },
-  { label: 'Görev Otomasyon Oranı', value: 85, target: 80, unit: '%', color: 'text-accent' },
-  { label: 'Ort. Yanıt Süresi', value: 3.2, target: 5, unit: 'dk', color: 'text-secondary' },
-  { label: 'Risk Tespit Doğruluğu', value: 94, target: 90, unit: '%', color: 'text-neon-red' },
-];
+/* ── Canlı Terminal ── */
+const LiveTerminal = () => {
+  const { logs } = useLogs();
+  const [open, setOpen] = useState(true);
+  const ref = useRef(null);
 
-const Dashboard = () => {
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [backendStatus, setBackendStatus] = useState('loading');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [logs]);
 
-  // Saate göre selamlama
-  const getGreeting = () => {
-    const hour = currentTime.getHours();
-    if (hour >= 5 && hour < 12) return { text: 'Günaydın', emoji: '☀️' };
-    if (hour >= 12 && hour < 17) return { text: 'İyi Öğlenler', emoji: '🌤️' };
-    if (hour >= 17 && hour < 21) return { text: 'İyi Akşamlar', emoji: '🌆' };
-    return { text: 'İyi Geceler', emoji: '🌙' };
-  };
-
-  const greeting = getGreeting();
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const fetchHealth = async () => {
-      try {
-        const health = await checkHealth();
-        setBackendStatus(health.status === 'active' ? 'online' : 'offline');
-      } catch { setBackendStatus('offline'); }
-    };
-    fetchHealth();
-    const interval = setInterval(fetchHealth, 15000);
-    return () => clearInterval(interval);
-  }, []);
+  const tc = { info: 'text-text-secondary', success: 'text-accent', warning: 'text-warning', error: 'text-danger', stage: 'text-primary' };
 
   return (
-    <div className="p-8 space-y-6 animate-slide-up">
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex-shrink-0">
-          <h1 className="text-2xl font-bold text-text tracking-tight">
-            {greeting.text} {greeting.emoji}
+    <div className="border border-border rounded-lg overflow-hidden bg-[#060a12]">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.02] border-b border-border cursor-pointer select-none" onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-accent" />
+          <span className="text-[11px] font-bold text-text uppercase tracking-wide">AI Terminal</span>
+          <span className="text-[9px] text-accent font-data ml-1">CANLI</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-soft" />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-text-muted font-data">{logs.length} log</span>
+          {open ? <ChevronUp className="w-3 h-3 text-text-muted" /> : <ChevronDown className="w-3 h-3 text-text-muted" />}
+        </div>
+      </div>
+      {open && (
+        <div ref={ref} className="p-3 max-h-32 overflow-y-auto font-mono text-[10px] leading-relaxed space-y-px scrollbar-thin">
+          {logs.length === 0 ? (
+            <p className="text-text-muted animate-pulse">⏳ Backend bağlantısı bekleniyor...</p>
+          ) : logs.map(l => (
+            <div key={l.id} className={`flex gap-1.5 ${tc[l.type] || 'text-text-muted'}`}>
+              <span className="text-text-muted/40 shrink-0">[{l.time}]</span>
+              <span className="shrink-0">{l.emoji}</span>
+              <span>{l.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ═══════════════ DASHBOARD ═══════════════ */
+const Dashboard = () => {
+  const { tasks } = useTasks();
+  const { emails } = useEmails();
+  const [now, setNow] = useState(new Date());
+  const [backend, setBackend] = useState('loading');
+
+  const hour = now.getHours();
+  const greeting = hour >= 5 && hour < 12 ? { t: 'Günaydın', e: '☀️' }
+    : hour >= 12 && hour < 17 ? { t: 'İyi Öğlenler', e: '🌤️' }
+    : hour >= 17 && hour < 21 ? { t: 'İyi Akşamlar', e: '🌆' }
+    : { t: 'İyi Geceler', e: '🌙' };
+
+  const pending = tasks.filter(t => t.status !== 'completed').length;
+  const critical = tasks.filter(t => t.priority === 'critical' && t.status !== 'completed').length;
+  const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    const f = async () => { try { const h = await checkHealth(); setBackend(h.status === 'active' ? 'on' : 'off'); } catch { setBackend('off'); } };
+    f(); const i = setInterval(f, 15000); return () => clearInterval(i);
+  }, []);
+
+  const urgentEmails = emails.filter(e => e.priority === 'urgent').length;
+  const unreadEmails = emails.filter(e => !e.isRead).length;
+
+  const metrics = [
+    { label: 'Gelen Kutusu', icon: Mail,        value: unreadEmails, sub: `${urgentEmails} ACİL bekliyor`, color: 'text-primary',   bg: 'bg-primary/10', link: '/email' },
+    { label: 'Görevlerim',   icon: CheckSquare,  value: pending, sub: `${critical} kritik · ${inProgress} devam`, color: 'text-accent',    bg: 'bg-accent/10',  link: '/tasks' },
+    { label: 'Toplantılar',  icon: Users,        value: 3,       sub: '1 AI özeti hazır',                     color: 'text-secondary', bg: 'bg-secondary/10', link: '/meetings' },
+    { label: 'Risk Uyarıları', icon: ShieldAlert, value: 2,      sub: '1 kritik phishing',                    color: 'text-danger',    bg: 'bg-danger/10',  link: '/risks' },
+  ];
+
+  const integrations = [
+    { title: 'E-Posta Kaynakları', emoji: '📧', desc: 'Gmail, Outlook, IMAP/SMTP — OAuth 2.0 ile gelen kutusu otomatik taranır.', tags: [{ t: 'REST API', c: 'text-accent bg-accent/10' }, { t: 'Webhook', c: 'text-primary bg-primary/10' }] },
+    { title: 'Platform Bağlantıları', emoji: '🔗', desc: 'Slack, Teams, Zapier, Power Automate ile entegre edilebilir.', tags: [{ t: 'Zapier', c: 'text-warning bg-warning/10' }, { t: 'Teams', c: 'text-secondary bg-secondary/10' }] },
+    { title: 'Gerçek Zamanlı İletişim', emoji: '📡', desc: 'SSE log stream ile tüm AI işlemleri anlık izlenebilir.', tags: [{ t: 'SSE', c: 'text-accent bg-accent/10' }, { t: 'Real-time', c: 'text-danger bg-danger/10' }] },
+  ];
+
+  return (
+    <div className="p-6 lg:p-8 flex flex-col gap-8 animate-slide-up max-w-[1400px]">
+
+      {/* ─── HEADER ─── */}
+      <div className="flex items-end justify-between pb-4 border-b border-border">
+        <div>
+          <h1 className="text-xl font-bold text-text tracking-tight">
+            {greeting.e} {greeting.t}, Yiğit!
           </h1>
-          <p className="text-sm text-text-secondary mt-1">İş akışınızın güncel özeti</p>
-          <p className="text-[11px] text-text-muted font-data flex items-center gap-1.5 mt-2">
-            <Clock className="w-3 h-3" />
-            {currentTime.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
-            <span className="text-text-secondary">{currentTime.toLocaleTimeString('tr-TR')}</span>
+          <p className="text-xs text-text-secondary mt-1">
+            {pending > 0
+              ? <>{pending} bekleyen görev{critical > 0 && <>, <span className="text-danger font-semibold">{critical} kritik</span></>}. Skills Agent hazır.</>
+              : <>Tüm görevler tamamlandı! 🎉</>
+            }
           </p>
         </div>
-
-        {/* Arama + Agent Status */}
-        <div className="flex items-center gap-3 flex-1 justify-end">
-          {/* Arama Çubuğu */}
-          <div className={`relative flex items-center flex-1 max-w-md transition-all duration-300 ${searchFocused ? 'max-w-lg' : ''}`}>
-            <Search className={`absolute left-5 w-4 h-4 transition-colors duration-200 ${searchFocused ? 'text-primary' : 'text-text-muted'}`} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              placeholder="E-posta, görev veya kişi ara..."
-              className={`w-full pl-14 pr-16 py-2.5 rounded-xl text-sm text-text placeholder-text-muted bg-white/[0.03] border transition-all duration-300 focus:outline-none ${
-                searchFocused
-                  ? 'border-primary/40 bg-white/[0.05] shadow-[0_0_20px_rgba(59,130,246,0.08)]'
-                  : 'border-border hover:border-border-light'
-              }`}
-            />
-            <span className="absolute right-3 text-[10px] text-text-muted font-data bg-white/[0.04] border border-border px-1.5 py-0.5 rounded">⌘K</span>
-          </div>
-
-          {/* Agent Status */}
-          <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl glass-card text-xs flex-shrink-0 ${
-            backendStatus === 'online' ? 'text-primary' : 'text-danger'
-          }`}>
-            {backendStatus === 'online' ? <Brain className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-            <span className="font-medium font-data text-[11px]">
-              {backendStatus === 'loading' ? 'CONNECTING...' : backendStatus === 'online' ? 'SKILLS AGENT' : 'OFFLINE'}
-            </span>
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              backendStatus === 'online' ? 'bg-primary animate-pulse-soft shadow-[0_0_6px_rgba(59,130,246,0.6)]' :
-              backendStatus === 'loading' ? 'bg-warning animate-pulse' : 'bg-danger'
-            }`} />
+        <div className="flex items-center gap-3">
+          <span className="font-data text-[11px] text-text-muted">
+            {now.toLocaleTimeString('tr-TR')}
+          </span>
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[9px] font-bold ${backend === 'on' ? 'bg-accent/10 text-accent border border-accent/20' : 'bg-danger/10 text-danger border border-danger/20'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${backend === 'on' ? 'bg-accent animate-pulse-soft' : 'bg-danger'}`} />
+            {backend === 'on' ? 'Aktif' : 'Off'}
           </div>
         </div>
       </div>
 
-      {/* ── Metric Cards ── */}
-      <div className="grid grid-cols-4 gap-4">
-        {metrics.map((m) => (
-          <Link
-            key={m.label}
-            to={m.link}
-            className="group glass-card rounded-xl p-5 relative overflow-hidden"
-          >
-            {/* Sparkline background */}
-            <div className="absolute bottom-0 right-0">
-              <Sparkline data={m.sparkData} color={m.sparkColor} height={40} width={100} />
-            </div>
-
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-3">
-                <div className={`p-2 rounded-lg ${m.bg}`}>
-                  <m.icon className={`w-4 h-4 ${m.color}`} />
-                </div>
-                <ArrowRight className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-0.5" />
+      {/* ─── METRIC CARDS ─── */}
+      <div className="grid grid-cols-4 gap-5">
+        {metrics.map(m => (
+          <Link key={m.label} to={m.link} className="group border border-border rounded-lg p-6 bg-card hover:bg-card-hover hover:border-white/10 transition-all duration-150 shadow-sm hover:shadow-md">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center`}>
+                <m.icon className={`w-4 h-4 ${m.color}`} />
               </div>
-              <p className="font-data text-3xl font-bold text-text">{m.value}</p>
-              <p className="text-xs text-text-muted mt-1">{m.label}</p>
-              {m.change !== 0 && (
-                <div className={`flex items-center gap-1 mt-1.5 text-[10px] font-data ${m.change < 0 ? 'text-accent' : 'text-danger'}`}>
-                  {m.change < 0 ? <TrendingDown className="w-2.5 h-2.5" /> : <TrendingUp className="w-2.5 h-2.5" />}
-                  <span>{Math.abs(m.change)}% AI azaltma</span>
-                </div>
-              )}
+              <ArrowRight className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
+            <p className="font-data text-2xl font-bold text-text leading-none">{m.value}</p>
+            <p className="text-[11px] text-text-muted mt-1.5">{m.label}</p>
+            <p className="text-[9px] text-text-muted/60 mt-1">{m.sub}</p>
           </Link>
         ))}
       </div>
 
-      {/* ── Main Grid ── */}
-      <div className="grid grid-cols-12 gap-5">
-
-        {/* Son AI Aktiviteleri */}
-        <div className="col-span-5 glass-card rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Zap className="w-3.5 h-3.5 text-primary" />
-              <h2 className="text-sm font-semibold text-text">AI Olay Günlüğü</h2>
-            </div>
-            <span className="font-data text-[10px] text-text-muted">{recentActivities.length} olay</span>
-          </div>
-          <div className="space-y-2">
-            {recentActivities.map((a) => (
-              <div key={a.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors group"
-              >
-                <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold font-data tracking-wider ${tagStyles[a.type]}`}>
-                  {a.tag}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] text-text-secondary leading-relaxed group-hover:text-text transition-colors">{a.text}</p>
-                </div>
-                <span className="font-data text-[10px] text-text-muted whitespace-nowrap mt-0.5">{a.time}</span>
-              </div>
-            ))}
-          </div>
+      {/* ─── MAIN GRID: PII + SİSTEM MİMARİSİ ─── */}
+      <div className="grid grid-cols-5 gap-5">
+        {/* PII Demo — 3 kolon */}
+        <div className="col-span-3 border border-border rounded-lg p-6 bg-card shadow-sm">
+          <PIIDemo />
         </div>
 
-        {/* Network Graph */}
-        <div className="col-span-4">
-          <NetworkGraph />
-          
-          {/* Predicted Savings */}
-          <div className="glass-card rounded-xl p-5 mt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <DollarSign className="w-3.5 h-3.5 text-accent" />
-              <h2 className="text-sm font-semibold text-text">Kazandığın Zaman</h2>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="text-center p-3 rounded-lg bg-accent/[0.06] border border-accent/10">
-                <p className="font-data text-xl font-bold text-accent">3.2 sa</p>
-                <p className="text-[11px] text-text-muted mt-1">Bu Hafta</p>
-              </div>
-              <div className="text-center p-3 rounded-lg bg-primary/[0.06] border border-primary/10">
-                <p className="font-data text-xl font-bold text-primary">47</p>
-                <p className="text-[11px] text-text-muted mt-1">Otomatik İşlem</p>
-              </div>
-            </div>
+        {/* Sistem Mimarisi — 2 kolon */}
+        <div className="col-span-2 border border-border rounded-lg p-6 bg-card shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Brain className="w-4 h-4 text-primary" />
+            <span className="text-xs font-bold text-text uppercase tracking-wide">Sistem Mimarisi</span>
+          </div>
+          <div className="space-y-0.5">
+            {ARCH.map(c => <ArchCard key={c.title} card={c} />)}
           </div>
         </div>
-
-        {/* Efficiency Rings */}
-        <div className="col-span-3 glass-card rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-text mb-5">Verimlilik</h2>
-          <div className="space-y-4">
-            {efficiencyStats.map((s) => {
-              const isPercentage = s.unit === '%';
-              const displayValue = isPercentage ? s.value : Math.round((s.target / s.value) * 100);
-              const isAboveTarget = isPercentage ? s.value >= s.target : s.value <= s.target;
-              return (
-                <RingProgress
-                  key={s.label}
-                  value={displayValue}
-                  size={44}
-                  stroke={3.5}
-                  color={s.color}
-                  label={s.label}
-                  sublabel={`Hedef: ${s.target}${s.unit}`}
-                />
-              );
-            })}
-          </div>
-
-          {/* Success Badge */}
-          <div className="mt-5 p-3 rounded-lg bg-accent/[0.06] border border-accent/10">
-            <div className="flex items-center gap-1.5">
-              <TrendingDown className="w-3 h-3 text-accent" />
-              <span className="text-[11px] font-semibold text-accent">Hedef Aşıldı!</span>
-            </div>
-            <p className="text-[11px] text-text-muted mt-1.5 leading-relaxed">
-              E-posta iş yükü <span className="font-data text-accent">%72</span> oranında azaltıldı.
-            </p>
-          </div>
-        </div>
-
       </div>
+
+      {/* ─── ENTEGRASYON ─── */}
+      <div className="border border-border rounded-lg p-6 bg-card shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity className="w-4 h-4 text-secondary" />
+          <span className="text-xs font-bold text-text uppercase tracking-wide">Entegrasyon Altyapısı</span>
+          <span className="text-[9px] text-text-muted ml-1">Production-ready bağlantı noktaları</span>
+        </div>
+        <div className="grid grid-cols-3 gap-5">
+          {integrations.map(ig => (
+            <div key={ig.title} className="p-5 rounded border border-white/[0.04] bg-surface hover:bg-surface-elevated transition-colors shadow-sm">
+              <p className="text-[11px] font-bold text-text mb-1.5">{ig.emoji} {ig.title}</p>
+              <p className="text-[10px] text-text-muted leading-relaxed mb-2.5">{ig.desc}</p>
+              <div className="flex gap-1.5">
+                {ig.tags.map(tg => (
+                  <span key={tg.t} className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${tg.c}`}>{tg.t}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ─── TERMINAL ─── */}
+      <LiveTerminal />
     </div>
   );
 };

@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { analyzeEmail } from '../services/skillsAgent.js';
-import { detectPII } from '../services/dataMasking.js';
+import { broadcast } from '../services/logBroadcaster.js';
 
 const router = Router();
 
@@ -26,29 +26,18 @@ router.post('/analyze', async (req, res) => {
       });
     }
 
-    console.log(`[E-Posta Analiz] Gönderen: ${sender} | Konu: ${subject}`);
+    broadcast('📨', `Yeni analiz isteği: ${sender || 'Bilinmeyen'} — "${subject || '(Konusuz)'}"`, 'info', { stage: 'received' });
 
-    // PII tespiti (bilgi amaçlı)
-    const piiDetected = detectPII(`${subject} ${body}`);
-    if (piiDetected.length > 0) {
-      console.log('[Güvenlik] PII tespit edildi, maskeleme aktif:', piiDetected);
-    }
-
-    // Skills Agent analizi
+    // Skills Agent analizi (_meta artık otomatik ekleniyor)
     const analysis = await analyzeEmail({ sender, subject, body, date });
 
     res.json({
       success: true,
-      data: {
-        ...analysis,
-        piiDetected: piiDetected.length > 0,
-        piiTypes: piiDetected,
-        analyzedAt: new Date().toISOString(),
-        engine: 'skills-agent-v0.1.0',
-      },
+      data: analysis,
     });
   } catch (error) {
     console.error('[E-Posta Analiz HATA]', error.message);
+    broadcast('❌', `Analiz hatası: ${error.message}`, 'error');
     res.status(500).json({ success: false, error: error.message });
   }
 });

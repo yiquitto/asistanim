@@ -6,7 +6,8 @@
  * ══════════════════════════════════════════════
  */
 
-import { maskPII } from './dataMasking.js';
+import { maskPII, detectPII } from './dataMasking.js';
+import { broadcast } from './logBroadcaster.js';
 
 // Keyword tabanlı fallback skorlama (AI API çalışmazsa)
 const URGENCY_KEYWORDS = ['acil', 'urgent', 'deadline', 'hemen', 'bugün', 'derhal', 'son tarih'];
@@ -20,7 +21,7 @@ const parseAIResponse = (text) => {
     const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
     return JSON.parse(cleanText);
   } catch (err) {
-    console.error('[Skills Agent] JSON Parse Hatası. Ham metin:', text);
+    console.error('[Skills Agent] JSON Parse Hatası. Ham metin:', text.substring(0, 300));
     throw new Error('Geçersiz JSON formatı döndü.');
   }
 };
@@ -28,51 +29,143 @@ const parseAIResponse = (text) => {
 /**
  * Ana analiz fonksiyonu — e-posta içeriğini analiz eder
  * @param {Object} emailData - { sender, subject, body, date }
- * @returns {Object} Analiz sonucu (IUR skorları, kategori, XAI açıklama)
+ * @returns {Object} Analiz sonucu (IUR skorları, kategori, XAI açıklama, _meta)
  */
 export const analyzeEmail = async (emailData) => {
-  // 1. PII maskeleme
+  const startTime = Date.now();
+
+  // Stage 1: PII maskeleme
+  broadcast('🛡️', `PII tarama başlatıldı — "${emailData.subject || '(Konusuz)'}..."`, 'stage', { stage: 'pii' });
+  const piiFound = detectPII(`${emailData.subject || ''} ${emailData.body || ''}`);
   const maskedBody = maskPII(emailData.body || '');
   const maskedSubject = maskPII(emailData.subject || '');
 
-  // 2. AI API — öncelik: Groq > Gemini > OpenAI > Fallback
+  if (piiFound.length > 0) {
+    const piiSummary = piiFound.map(p => `${p.type}(${p.count})`).join(', ');
+    broadcast('🔒', `PII tespit edildi ve maskelendi: ${piiSummary}`, 'warning', { stage: 'pii_done', piiFound });
+  } else {
+    broadcast('✅', 'PII tarama temiz — hassas veri bulunamadı', 'success', { stage: 'pii_done' });
+  }
+
+  // Stage 2: AI API — öncelik: Groq > Gemini > OpenAI > Fallback
+  broadcast('🧠', 'AI analiz motoru seçiliyor...', 'stage', { stage: 'ai_select' });
+
   const groqKey = process.env.GROQ_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
+  const kimiKey = process.env.KIMI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
+  const localLLMUrl = process.env.LOCAL_LLM_URL; // LM Studio veya Ollama
 
-  // Groq (en hızlı)
+  let result = null;
+  let modelUsed = 'fallback-keyword';
+
+  // Groq (en hızlı — retry ile)
   if (groqKey) {
-    try {
-      console.log('[Skills Agent] 🚀 Groq API ile analiz ediliyor...');
-      return await callGroqAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
-    } catch (error) {
-      console.warn('[Skills Agent] Groq hatası:', error.message);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        broadcast('🚀', `Groq API (llama-3.3-70b) ile analiz başlatıldı...${attempt > 1 ? ` (deneme ${attempt}/3)` : ''}`, 'info', { stage: 'ai_call' });
+        result = await callGroqAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+        modelUsed = 'groq-llama-3.3-70b';
+        broadcast('✅', 'Groq AI analiz başarılı', 'success', { stage: 'ai_done' });
+        break;
+      } catch (error) {
+        if (error.message.includes('429') && attempt < 3) {
+          const waitMs = attempt * 5000;
+          broadcast('⏳', `Groq rate limit — ${waitMs / 1000}s bekleniyor (${attempt}/3)`, 'warning');
+          await new Promise(r => setTimeout(r, waitMs));
+        } else {
+          broadcast('⚠️', `Groq hatası: ${error.message.substring(0, 100)}`, 'warning');
+          break;
+        }
+      }
     }
   }
 
   // Gemini
-  if (geminiKey) {
+  if (!result && geminiKey) {
     try {
-      console.log('[Skills Agent] Gemini API ile analiz ediliyor...');
-      return await callGeminiAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      broadcast('🚀', 'Gemini API (gemini-2.0-flash) ile analiz başlatıldı...', 'info', { stage: 'ai_call' });
+      result = await callGeminiAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      modelUsed = 'gemini-2.0-flash';
+      broadcast('✅', 'Gemini AI analiz başarılı', 'success', { stage: 'ai_done' });
     } catch (error) {
-      console.warn('[Skills Agent] Gemini hatası:', error.message);
+      broadcast('⚠️', `Gemini hatası: ${error.message.substring(0, 100)}`, 'warning');
+    }
+  }
+
+  // Local LLM (LM Studio / Ollama — Mistral 7B)
+  if (!result && localLLMUrl) {
+    try {
+      broadcast('🖥️', 'Yerel AI Motoru (Mistral-7B) ile analiz başlatıldı...', 'info', { stage: 'ai_call' });
+      result = await callLocalLLM(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      modelUsed = 'local-mistral-7b';
+      broadcast('✅', 'Yerel AI analiz başarılı (veri dışarı çıkmadı)', 'success', { stage: 'ai_done' });
+    } catch (error) {
+      broadcast('⚠️', `Yerel LLM hatası: ${error.message.substring(0, 100)}`, 'warning');
+    }
+  }
+
+  // Kimi (Moonshot)
+  if (!result && kimiKey) {
+    try {
+      broadcast('🚀', 'Kimi API (moonshot-v1-8k) ile analiz başlatıldı...', 'info', { stage: 'ai_call' });
+      result = await callKimiAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      modelUsed = 'kimi-moonshot-v1-8k';
+      broadcast('✅', 'Kimi analiz başarılı', 'success', { stage: 'ai_done' });
+    } catch (error) {
+      broadcast('⚠️', `Kimi hatası: ${error.message.substring(0, 100)}`, 'warning');
     }
   }
 
   // OpenAI
-  if (openaiKey) {
+  if (!result && openaiKey) {
     try {
-      console.log('[Skills Agent] OpenAI API ile analiz ediliyor...');
-      return await callOpenAIAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      broadcast('🚀', 'OpenAI API (gpt-4o-mini) ile analiz başlatıldı...', 'info', { stage: 'ai_call' });
+      result = await callOpenAIAPI(emailData.sender, maskedSubject, maskedBody, emailData.date);
+      modelUsed = 'openai-gpt-4o-mini';
+      broadcast('✅', 'OpenAI analiz başarılı', 'success', { stage: 'ai_done' });
     } catch (error) {
-      console.warn('[Skills Agent] OpenAI hatası:', error.message);
+      broadcast('⚠️', `OpenAI hatası: ${error.message.substring(0, 100)}`, 'warning');
     }
   }
 
-  // 3. Fallback: Keyword-based skorlama
-  console.log('[Skills Agent] Fallback (keyword) analiz kullanılıyor');
-  return keywordBasedScoring(emailData.sender, maskedSubject, maskedBody);
+  // Fallback
+  if (!result) {
+    broadcast('🔄', 'AI API erişilemedi — Keyword tabanlı fallback analiz kullanılıyor', 'warning', { stage: 'ai_call' });
+    result = keywordBasedScoring(emailData.sender, maskedSubject, maskedBody);
+    broadcast('✅', 'Fallback analiz tamamlandı', 'success', { stage: 'ai_done' });
+  }
+
+  const responseTimeMs = Date.now() - startTime;
+
+  // Stage 3: Skor hesaplama
+  const priorityLabel = { urgent: 'ACİL', high: 'YÜKSEK', normal: 'NORMAL', low: 'DÜŞÜK' };
+  broadcast('📊', `IUR Skoru: ${result.scores?.total || '?'} → ${priorityLabel[result.priority] || result.priority}`, 'info', { stage: 'scoring' });
+
+  // Stage 4: Görev çıkarımı
+  if (result.suggestedTasks?.length > 0) {
+    broadcast('📋', `${result.suggestedTasks.length} görev çıkarıldı → Görev Motoru'na aktarılıyor`, 'success', { stage: 'tasks' });
+  }
+
+  // Stage 5: Taslak yanıt
+  if (result.suggestedReply) {
+    const wordCount = result.suggestedReply.split(/\s+/).length;
+    broadcast('✉️', `Taslak yanıt oluşturuldu (${wordCount} kelime)`, 'success', { stage: 'reply' });
+  }
+
+  broadcast('🏁', `Analiz tamamlandı — ${modelUsed} · ${responseTimeMs}ms`, 'success', { stage: 'complete' });
+
+  // Meta bilgileri ekle
+  result._meta = {
+    model: modelUsed,
+    responseTimeMs,
+    piiMaskedCount: piiFound.reduce((sum, p) => sum + p.count, 0),
+    piiTypes: piiFound,
+    analyzedAt: new Date().toISOString(),
+    engine: 'skills-agent-v0.2.0',
+  };
+
+  return result;
 };
 
 /**
@@ -103,7 +196,6 @@ const callGroqAPI = async (sender, subject, body, date) => {
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error('Groq boş yanıt döndü');
 
-  console.log('[Skills Agent] ✅ Groq AI analiz başarılı');
   return parseAIResponse(text);
 };
 
@@ -131,7 +223,7 @@ const callGeminiAPI = async (sender, subject, body, date, retries = 3) => {
 
     if (response.status === 429 && attempt < retries) {
       const waitMs = attempt * 2000;
-      console.log(`[Skills Agent] Rate limit (429), ${waitMs}ms bekleyip tekrar deneniyor... (${attempt}/${retries})`);
+      broadcast('⏳', `Rate limit — ${waitMs}ms beklenip tekrar deneniyor (${attempt}/${retries})`, 'warning');
       await new Promise(r => setTimeout(r, waitMs));
       continue;
     }
@@ -142,7 +234,6 @@ const callGeminiAPI = async (sender, subject, body, date, retries = 3) => {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error('Gemini boş yanıt döndü');
 
-    console.log('[Skills Agent] ✅ Gemini AI analiz başarılı');
     return parseAIResponse(text);
   }
 
@@ -173,6 +264,106 @@ const callOpenAIAPI = async (sender, subject, body, date) => {
 
   const data = await response.json();
   return parseAIResponse(data.choices[0].message.content);
+};
+
+/**
+ * Kimi (Moonshot) API çağrısı
+ */
+const callKimiAPI = async (sender, subject, body, date) => {
+  const prompt = buildAnalysisPrompt(sender, subject, body, date);
+
+  const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.KIMI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'moonshot-v1-8k',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Kimi API: ${response.status}`);
+
+  const data = await response.json();
+  return parseAIResponse(data.choices[0].message.content);
+};
+
+/**
+ * Local LLM çağrısı (LM Studio / Ollama — OpenAI uyumlu endpoint)
+ * Veri dışarı çıkmaz, rate limit yok, tamamen ücretsiz
+ */
+const callLocalLLM = async (sender, subject, body, date) => {
+  const localUrl = process.env.LOCAL_LLM_URL || 'http://localhost:1234/v1/chat/completions';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    broadcast('🔗', `Yerel LLM bağlantısı: ${localUrl}`, 'info');
+    
+    const response = await fetch(localUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mistralai/mistral-7b-instruct-v0.3',
+        messages: [
+          {
+            role: 'user',
+            content: `E-posta: Gönderen: ceo@sirket.com Konu: Acil toplantı İçerik: Yarın saat 10'da bütçe toplantısı var.
+
+Analiz JSON:`
+          },
+          {
+            role: 'assistant',
+            content: `{"priority":"urgent","scores":{"impact":8,"urgency":9,"risk":1,"total":7.0},"category":"meeting","summary":"CEO yarın saat 10'da acil bütçe toplantısı çağrısı yapıyor.","explanation":"CEO'dan gelen acil toplantı daveti, yüksek iş etkisi ve aciliyet içeriyor.","suggestedTasks":[{"title":"Bütçe toplantısına hazırlan","assignee":"user","deadline":"Yarın 10:00","priority":"high"}],"risks":{"phishing":0,"kvkk_violation":0,"social_engineering":0,"details":"Risk tespit edilmedi"},"suggestedReply":"Sayın CEO, toplantıya katılacağım. Bütçe dokümanlarını hazırlıyorum."}`
+          },
+          {
+            role: 'user',
+            content: `E-posta: Gönderen: ${sender} Konu: ${subject} İçerik: ${body.substring(0, 500)}
+
+Analiz JSON:`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 1024,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Local LLM: ${response.status} — ${errText.substring(0, 100)}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Yerel model boş yanıt döndü');
+
+    broadcast('📄', `Yerel LLM ham yanıt: ${text.substring(0, 80)}...`, 'info');
+    const parsed = parseAIResponse(text);
+
+    // Mistral bazen total'i yanlış hesaplar — düzelt
+    if (parsed.scores) {
+      const i = parsed.scores.impact || 5;
+      const u = parsed.scores.urgency || 5;
+      const r = parsed.scores.risk || 1;
+      parsed.scores.total = Math.round((i * 0.4 + u * 0.35 + r * 0.25) * 100) / 100;
+      parsed.priority = parsed.scores.total >= 8 ? 'urgent' : parsed.scores.total >= 6 ? 'high' : parsed.scores.total >= 4 ? 'normal' : 'low';
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Yerel LLM: 120s timeout aşıldı');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 /**

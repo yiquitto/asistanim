@@ -1,17 +1,40 @@
-import { useState } from 'react';
-import { Mail, Send, AlertTriangle, Clock, User, ChevronRight, Sparkles, Shield, Eye, Plus, Loader2, X, Edit3, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Mail, Send, AlertTriangle, Clock, User, ChevronRight, Sparkles, Shield, Eye, Plus, Loader2, X, Edit3, CheckCircle, Play, Code, Zap, Link2 } from 'lucide-react';
 import { analyzeEmail } from '../services/api';
-
-/**
- * ══════════════════════════════════════════════
- *  Bu katman Skills Agent tarafından optimize edilmiştir.
- *  Fonksiyon: E-Posta Zekâ Katmanı — AI filtrelenmiş inbox [MVP]
- *  AI Modeli: Gemini / OpenAI
- *  Prompt Stratejisi: IUR Skorlama (Impact-Urgency-Risk)
- * ══════════════════════════════════════════════
- */
-
 import { useTasks } from '../context/TaskContext';
+import { useEmails } from '../context/EmailContext';
+
+// Canlı demo senaryoları
+const DEMO_SCENARIOS = [
+  {
+    sender: 'cfo@sirket.com',
+    subject: 'ACİL: Q3 Dijital Pazarlama Bütçesi Onayı',
+    body: 'Merhaba,\nYarın sabahki yönetim kurulu toplantısı öncesinde Q3 dijital pazarlama bütçe revizyonlarını acilen incelemem gerekiyor. Lütfen saat 17:00\'ye kadar tüm departman bütçelerini tek bir Excel\'de toplayıp bana gönder. Sosyal medya bütçesinde %15\'lik kesinti senaryosunu da rapora ekleyin.\nSaygılarımla',
+    label: '🔴 Acil Bütçe',
+  },
+  {
+    sender: 'it-support@sirket-guvenlik-portal.xyz',
+    subject: 'UYARI: E-posta Kotanız Dolmak Üzere!',
+    body: 'Sayın Kullanıcı,\nKurumsal e-posta hesabınızın depolama alanı %98 sınırına ulaşmıştır. Önümüzdeki 2 saat içinde kotanızı yükseltmezseniz gelen e-postalarınız geri dönecektir.\nLütfen hemen aşağıdaki bağlantıya tıklayarak sistem şifrenizle giriş yapın:\nhttp://sirket-guvenlik-portal.xyz/upgrade\n\nBilgi Teknolojileri Departmanı',
+    label: '⚠️ Phishing',
+  },
+  {
+    sender: 'ik@sirket.com',
+    subject: 'Haziran Eğitim Planı ve Katılımcı Listesi',
+    body: 'Merhaba ekip,\nHaziran ayında düzenlenecek Yeni Nesil Liderlik eğitiminin programı netleşmiştir. Eğitim 15 Haziran\'da tam gün olarak konferans salonunda yapılacaktır.\nEkteki dosyada eğitime katılacak 45 personelin TC kimlik numaraları 12345678901, cep telefonları 0532 123 45 67 ve açık ev adreslerinin yer aldığı kayıt tablosunu bulabilirsiniz.\nSevgiler.',
+    label: '🔵 KVKK Riski',
+  },
+];
+
+// Pipeline Aşamaları
+const PIPELINE_STAGES = [
+  { key: 'received', label: '📨 Alındı', icon: Mail },
+  { key: 'pii', label: '🛡️ PII Tarama', icon: Shield },
+  { key: 'ai_call', label: '🧠 AI Analiz', icon: Sparkles },
+  { key: 'scoring', label: '📊 Skorlama', icon: Zap },
+  { key: 'tasks', label: '📋 Görev', icon: CheckCircle },
+  { key: 'complete', label: '✅ Tamam', icon: CheckCircle },
+];
 
 const initialEmails = [
   {
@@ -88,14 +111,18 @@ const priorityConfig = {
 
 const EmailInbox = () => {
   const { addTask } = useTasks();
-  const [emails, setEmails] = useState(initialEmails);
+  const { emails, setEmails, updateEmail, addEmail } = useEmails();
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [filter, setFilter] = useState('all');
   const [showXAI, setShowXAI] = useState(false);
+  const [showRawJSON, setShowRawJSON] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState(null);
   const [composeData, setComposeData] = useState({ sender: '', subject: '', body: '' });
+  const [isDemoRunning, setIsDemoRunning] = useState(false);
+  const [pipelineStage, setPipelineStage] = useState(null); // currently active pipeline stage
+  const [rawAnalysis, setRawAnalysis] = useState(null); // raw JSON from backend
 
   // Taslak düzenleme state'leri
   const [isEditingDraft, setIsEditingDraft] = useState(false);
@@ -134,11 +161,48 @@ const EmailInbox = () => {
     setTimeout(() => {
       setSendStatus('sent');
       setIsEditingDraft(false);
-      // E-postayı okunmuş olarak işaretle
-      setEmails(prev => prev.map(e =>
-        e.id === selected.id ? { ...e, isRead: true, replied: true } : e
-      ));
+      updateEmail(selected.id, { isRead: true, replied: true });
     }, 1500);
+  };
+
+  // Sonuçtan e-posta oluştur ve listeye ekle
+  const processAnalysisResult = (result, emailData) => {
+    setRawAnalysis(result);
+    const newEmail = {
+      id: Date.now(),
+      sender: emailData.sender || 'Manuel Giriş',
+      email: emailData.sender,
+      subject: emailData.subject || '(Konusuz)',
+      preview: emailData.body.substring(0, 200),
+      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      priority: result.priority || 'normal',
+      scores: result.scores || { impact: 5, urgency: 5, risk: 1, total: 4.0 },
+      category: result.category || 'info',
+      explanation: result.explanation || 'AI analizi tamamlandı.',
+      risks: result.risks || { phishing: 0, kvkk_violation: 0, social_engineering: 0 },
+      suggestedReply: result.suggestedReply || null,
+      isRead: false,
+      aiAnalyzed: true,
+      liveAnalysis: true,
+      _meta: result._meta || null,
+    };
+    if (result.suggestedTasks && result.suggestedTasks.length > 0) {
+      result.suggestedTasks.forEach(t => {
+        addTask({
+          title: t.title,
+          source: `E-Posta: ${emailData.subject || 'Konusuz'}`,
+          priority: t.priority || 'medium',
+          deadline: t.deadline || 'Belirtilmedi',
+          estimatedMinutes: t.estimatedMinutes || 30,
+          status: 'pending',
+          assignee: t.assignee || 'Siz',
+        });
+      });
+    }
+    addEmail(newEmail);
+    setSelectedEmail(newEmail.id);
+    setDraftText(newEmail.suggestedReply || '');
+    return newEmail;
   };
 
   // Canlı AI Analiz — backend'e gönder
@@ -146,85 +210,145 @@ const EmailInbox = () => {
     if (!composeData.body && !composeData.subject) return;
     setIsAnalyzing(true);
     setAnalyzeError(null);
+    setPipelineStage('received');
     try {
+      setPipelineStage('pii');
+      await new Promise(r => setTimeout(r, 300));
+      setPipelineStage('ai_call');
       const result = await analyzeEmail({
         sender: composeData.sender || 'bilinmiyor@test.com',
         subject: composeData.subject,
         body: composeData.body,
         date: new Date().toISOString(),
       });
-      const newEmail = {
-        id: Date.now(),
-        sender: composeData.sender || 'Manuel Giriş',
-        email: composeData.sender,
-        subject: composeData.subject || '(Konusuz)',
-        preview: composeData.body.substring(0, 200),
-        time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        priority: result.priority || 'normal',
-        scores: result.scores || { impact: 5, urgency: 5, risk: 1, total: 4.0 },
-        category: result.category || 'info',
-        explanation: result.explanation || 'AI analizi tamamlandı.',
-        risks: result.risks || { phishing: 0, kvkk_violation: 0, social_engineering: 0 },
-        suggestedReply: result.suggestedReply || null,
-        isRead: false,
-        aiAnalyzed: true,
-        liveAnalysis: true,
-      };
-      // Çıkarılan görevleri Task Engine'e ekle
-      if (result.suggestedTasks && result.suggestedTasks.length > 0) {
-        result.suggestedTasks.forEach(t => {
-          addTask({
-            title: t.title,
-            source: `E-Posta: ${composeData.subject || 'Konusuz'}`,
-            priority: t.priority || 'medium',
-            deadline: t.deadline || 'Belirtilmedi',
-            estimatedMinutes: t.estimatedMinutes || 30,
-            status: 'pending',
-            assignee: t.assignee || 'Yiğit',
-          });
-        });
-      }
+      setPipelineStage('scoring');
+      await new Promise(r => setTimeout(r, 400));
+      setPipelineStage('tasks');
+      await new Promise(r => setTimeout(r, 300));
+      setPipelineStage('complete');
 
-      setEmails(prev => [newEmail, ...prev]);
-      setSelectedEmail(newEmail.id);
-      setDraftText(newEmail.suggestedReply || '');
+      processAnalysisResult(result, composeData);
       setShowCompose(false);
       setComposeData({ sender: '', subject: '', body: '' });
     } catch (err) {
       setAnalyzeError(err.message || 'AI analiz başarısız oldu');
     } finally {
       setIsAnalyzing(false);
+      setTimeout(() => setPipelineStage(null), 2000);
     }
+  };
+
+  // Canlı Demo — sıralı senaryo
+  const handleLiveDemo = async () => {
+    if (isDemoRunning) return;
+    setIsDemoRunning(true);
+    setShowCompose(false);
+
+    for (const scenario of DEMO_SCENARIOS) {
+      setPipelineStage('received');
+      await new Promise(r => setTimeout(r, 1000));
+
+      try {
+        setPipelineStage('pii');
+        await new Promise(r => setTimeout(r, 600));
+        setPipelineStage('ai_call');
+
+        const result = await analyzeEmail({
+          sender: scenario.sender,
+          subject: scenario.subject,
+          body: scenario.body,
+          date: new Date().toISOString(),
+        });
+
+        setPipelineStage('scoring');
+        await new Promise(r => setTimeout(r, 500));
+        setPipelineStage('tasks');
+        await new Promise(r => setTimeout(r, 400));
+        setPipelineStage('complete');
+
+        processAnalysisResult(result, scenario);
+        await new Promise(r => setTimeout(r, 2000));
+      } catch {
+        // Hata olsa bile devam
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    setPipelineStage(null);
+    setIsDemoRunning(false);
   };
 
   return (
     <div className="flex h-full animate-slide-up">
       {/* Sol: E-Posta Listesi */}
       <div className="w-[420px] flex-shrink-0 border-r border-border flex flex-col">
-        <div className="p-5 border-b border-border">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-text flex items-center gap-2">
               <Mail className="w-5 h-5 text-primary" /> E-Posta Zekâsı
             </h2>
-            <button
-              onClick={() => setShowCompose(!showCompose)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Analiz Et
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleLiveDemo}
+                disabled={isDemoRunning}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${isDemoRunning ? 'bg-accent/20 text-accent animate-pulse' : 'bg-accent text-white hover:bg-accent/80'}`}
+              >
+                <Play className="w-3.5 h-3.5" />
+                {isDemoRunning ? 'Demo Çalışıyor...' : 'Canlı Demo'}
+              </button>
+              <button
+                onClick={() => setShowCompose(!showCompose)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-light transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Analiz Et
+              </button>
+            </div>
+          </div>
+
+          {/* Pipeline Animasyonu */}
+          {pipelineStage && (
+            <div className="flex items-center gap-1 px-2 py-2 mb-3 bg-surface rounded-lg overflow-x-auto">
+              {PIPELINE_STAGES.map((s, i) => {
+                const stageIdx = PIPELINE_STAGES.findIndex(x => x.key === pipelineStage);
+                const thisIdx = i;
+                const isDone = thisIdx < stageIdx;
+                const isActive = thisIdx === stageIdx;
+                return (
+                  <div key={s.key} className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-semibold transition-all duration-300 flex-shrink-0 ${
+                    isDone ? 'bg-accent/20 text-accent' : isActive ? 'bg-primary/20 text-primary animate-pulse' : 'text-text-muted'
+                  }`}>
+                    {s.label}
+                    {i < PIPELINE_STAGES.length - 1 && <span className="text-text-muted/30 ml-1">→</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Gmail/Outlook Bağlantı Vizyonu */}
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <span className="text-[10px] text-text-muted flex items-center gap-1"><Link2 className="w-3 h-3" /> Kaynak: Manuel</span>
+            <span className="text-[10px] text-primary/50 cursor-default" title="Production sürümünde OAuth 2.0 ile Gmail/Outlook bağlanabilir">Gmail Bağla</span>
+            <span className="text-[10px] text-secondary/50 cursor-default">Outlook Bağla</span>
           </div>
           <div className="flex gap-2">
             {['all', 'urgent', 'high', 'normal', 'low'].map((f) => (
               <button key={f} onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === f ? 'bg-primary text-white' : 'bg-white/[0.03] text-text-secondary hover:text-text border border-border'}`}
-              >{f === 'all' ? 'Tümü' : priorityConfig[f]?.label}</button>
+                className={`px-3.5 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all duration-300 border ${
+                  filter === f 
+                    ? 'bg-primary/15 text-primary border-primary/30 shadow-[0_0_15px_rgba(56,189,248,0.15)]' 
+                    : 'bg-surface/30 text-text-muted border-border/40 hover:border-border/80 hover:text-text hover:bg-surface/80'
+                }`}
+              >
+                {f === 'all' ? 'Tümü' : priorityConfig[f]?.label}
+              </button>
             ))}
           </div>
         </div>
 
         {/* Canlı Analiz Paneli */}
         {showCompose && (
-          <div className="p-4 border-b border-border bg-card animate-slide-up">
+          <div className="p-5 border-b border-border bg-card animate-slide-up">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-accent flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" /> Canlı AI E-Posta Analizi
@@ -232,15 +356,15 @@ const EmailInbox = () => {
               <button onClick={() => setShowCompose(false)} className="text-text-muted hover:text-text"><X className="w-4 h-4" /></button>
             </div>
             <input value={composeData.sender} onChange={(e) => setComposeData(p => ({...p, sender: e.target.value}))}
-              placeholder="Gönderen (örn: ceo@sirket.com)" className="w-full mb-2 px-3 py-2 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50" />
+              placeholder="Gönderen (örn: ceo@sirket.com)" className="w-full mb-2.5 px-3 py-2.5 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50" />
             <input value={composeData.subject} onChange={(e) => setComposeData(p => ({...p, subject: e.target.value}))}
-              placeholder="Konu" className="w-full mb-2 px-3 py-2 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50" />
+              placeholder="Konu" className="w-full mb-2.5 px-3 py-2.5 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50" />
             <textarea value={composeData.body} onChange={(e) => setComposeData(p => ({...p, body: e.target.value}))}
               placeholder="E-posta içeriğini yapıştırın..." rows={4}
-              className="w-full mb-2 px-3 py-2 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50 resize-none" />
+              className="w-full mb-3 px-3 py-2.5 bg-surface-elevated border border-border rounded-lg text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary/50 resize-none" />
             {analyzeError && <p className="text-[11px] text-danger mb-2">⚠️ {analyzeError}</p>}
             <button onClick={handleAnalyze} disabled={isAnalyzing || (!composeData.body && !composeData.subject)}
-              className="w-full py-2 rounded-lg bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-lg bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
             >
               {isAnalyzing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Skills Agent Analiz Ediyor...</> : <><Sparkles className="w-3.5 h-3.5" /> AI ile Analiz Et</>}
             </button>
@@ -253,7 +377,7 @@ const EmailInbox = () => {
             const pc = priorityConfig[email.priority];
             return (
               <div key={email.id} onClick={() => handleSelectEmail(email.id)}
-                className={`px-5 py-4 border-b border-border cursor-pointer transition-all duration-200 ${selectedEmail === email.id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-card border-l-2 border-l-transparent'} ${!email.isRead ? 'bg-surface-elevated/30' : ''}`}
+                className={`px-6 py-5 border-b border-border cursor-pointer transition-all duration-200 ${selectedEmail === email.id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-card border-l-2 border-l-transparent'} ${!email.isRead ? 'bg-surface-elevated/30' : ''}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${pc.dot} ${email.priority === 'urgent' ? 'animate-pulse-soft' : ''}`} />
@@ -286,7 +410,7 @@ const EmailInbox = () => {
       <div className="flex-1 flex flex-col">
         {selected ? (
           <>
-            <div className="p-6 border-b border-border">
+            <div className="p-7 border-b border-border">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-text leading-snug">{selected.subject}</h3>
@@ -301,7 +425,7 @@ const EmailInbox = () => {
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-surface-elevated/30 border-b border-border">
+            <div className="px-7 py-5 bg-surface-elevated/30 border-b border-border">
               <div className="flex items-center gap-6">
                 {[
                   { label: 'Impact', value: selected.scores.impact, color: 'bg-primary' },
@@ -323,10 +447,10 @@ const EmailInbox = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-7 space-y-5">
               {/* E-posta İçeriği */}
-              <div className="bg-card border border-border rounded-xl p-4">
-                <p className="text-sm text-text-secondary leading-relaxed">{selected.preview}</p>
+              <div className="bg-card border border-border rounded-2xl p-5">
+                <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{selected.body || selected.preview}</p>
               </div>
 
               {/* Phishing Uyarısı */}
@@ -354,6 +478,36 @@ const EmailInbox = () => {
                     <span className="text-sm font-semibold text-accent">Skills Agent Analiz Raporu</span>
                   </div>
                   <p className="text-sm text-text-secondary leading-relaxed">{selected.explanation}</p>
+                </div>
+              )}
+
+              {/* Performans Rozeti */}
+              {selected._meta && (
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface border border-border text-[10px] font-data text-text-muted">
+                  <span className="text-accent">⚡ {selected._meta.model}</span>
+                  <span>·</span>
+                  <span>{selected._meta.responseTimeMs}ms</span>
+                  <span>·</span>
+                  <span>{selected._meta.piiMaskedCount > 0 ? `🔒 ${selected._meta.piiMaskedCount} PII maskelendi` : '✅ PII temiz'}</span>
+                </div>
+              )}
+
+              {/* Raw JSON Inspector */}
+              <button onClick={() => setShowRawJSON(!showRawJSON)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass-card text-sm text-primary hover:text-white transition-colors w-full">
+                <Code className="w-4 h-4" />
+                <span className="font-medium">Ham AI Yanıtını Görüntüle (JSON)</span>
+                <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${showRawJSON ? 'rotate-90' : ''}`} />
+              </button>
+
+              {showRawJSON && rawAnalysis && (
+                <div className="p-4 rounded-xl bg-[#0a0e14] border border-border animate-slide-up overflow-hidden">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Code className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-semibold text-primary">Raw AI Response</span>
+                  </div>
+                  <pre className="text-[11px] font-mono text-text-secondary leading-relaxed overflow-x-auto max-h-64 overflow-y-auto scrollbar-thin">
+                    {JSON.stringify(rawAnalysis, null, 2)}
+                  </pre>
                 </div>
               )}
 

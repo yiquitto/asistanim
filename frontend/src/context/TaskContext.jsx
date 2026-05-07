@@ -1,4 +1,4 @@
-import { createContext, useState, useContext } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
 
 const TaskContext = createContext();
 
@@ -87,11 +87,64 @@ const initialTasks = [
   },
 ];
 
+// localStorage'dan yükle veya varsayılanları kullan
+const loadTasks = () => {
+  try {
+    const saved = localStorage.getItem('asistanim_tasks');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return initialTasks;
+};
+
 export const TaskProvider = ({ children }) => {
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState(loadTasks);
+
+  // localStorage'a kaydet
+  useEffect(() => {
+    localStorage.setItem('asistanim_tasks', JSON.stringify(tasks));
+  }, [tasks]);
+
+  // Yeni e-postalar geldiğinde AI tarafından çıkarılan görevleri yakala
+  useEffect(() => {
+    const es = new EventSource('http://localhost:3001/api/logs/stream');
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.event === 'new_email') {
+          console.log("TaskContext new_email received:", data.emailData);
+        }
+        if (data.event === 'new_email' && data.emailData && data.emailData.suggestedTasks) {
+          const email = data.emailData;
+          const newTasks = email.suggestedTasks.map(t => ({
+            id: Date.now() + Math.random(),
+            title: t.title || t, // Bazı LLM'ler düz string dönebilir
+            source: email.subject,
+            priority: t.priority === 'urgent' ? 'critical' : (t.priority === 'normal' ? 'medium' : (t.priority || 'medium')),
+            deadline: t.deadline || 'Belirtilmemiş',
+            estimatedMinutes: 30,
+            status: 'pending',
+            assignee: t.assignee || 'Siz',
+          }));
+          
+          if (newTasks.length > 0) {
+            setTasks(prev => {
+              // Aynı source ve title'a sahip görev varsa ekleme (önlem)
+              const filtered = newTasks.filter(nt => !prev.some(pt => pt.title === nt.title && pt.source === nt.source));
+              return [...filtered, ...prev];
+            });
+          }
+        }
+      } catch (err) {}
+    };
+    return () => es.close();
+  }, []);
 
   const addTask = (task) => {
     setTasks(prev => [{ ...task, id: Date.now() + Math.random() }, ...prev]);
+  };
+
+  const removeTask = (id) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   const toggleStatus = (id) => {
@@ -103,7 +156,7 @@ export const TaskProvider = ({ children }) => {
   };
 
   return (
-    <TaskContext.Provider value={{ tasks, addTask, toggleStatus }}>
+    <TaskContext.Provider value={{ tasks, addTask, removeTask, toggleStatus }}>
       {children}
     </TaskContext.Provider>
   );
